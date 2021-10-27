@@ -7,11 +7,17 @@ npm install tree-sitter tree-sitter-c magic-string
 usage:
 node ragel-from-comments.js path/to/inputfile.ragel.c
 
+this will produce path/to/inputfile.c.ragel
+
 license: CC0-1.0
 */
 
 // input: /* %ragel { ... } */
 // output: %%{ ... }
+
+const is_debug = false;
+
+const textStartLength = 50; // debug: print first n chars of nodeText
 
 // https://github.com/tree-sitter/node-tree-sitter/blob/master/tree-sitter.d.ts
 const TreeSitter = require('tree-sitter');
@@ -52,6 +58,18 @@ const tree = parser.parse(sourceCode);
 
 const walk_cursor = (cursor, level = 0) => {
   while (true) {
+
+    if (is_debug) {
+      // print this node
+      const textEscaped = cursor.nodeText.replace(/\n/g, '\\n');
+      const typeEscaped = cursor.nodeType.replace('\n', '\\n');
+      const textStart = (textEscaped.length < textStartLength)
+        ? textEscaped : (textEscaped.slice(0, textStartLength) + ' ...');
+      const textLocation = `${cursor.startIndex} ${cursor.endIndex}`; // offset in utf8 chars (or offset in bytes? which is it?)
+      //const textLocation = `${cursor.startPosition.row}:${cursor.startPosition.column} ${cursor.endPosition.row}:${cursor.endPosition.column}`;
+      const levelString = Array.from({ length: (level + 1) }).map(_ => '+').join('');
+      console.log(`${levelString} ${textLocation} ${typeEscaped}: ${textStart}`);
+    }
 
     // handle this node
     var ragelMatch = null;
