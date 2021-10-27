@@ -13,10 +13,13 @@ license: CC0-1.0
 */
 
 // input: /* %ragel { ... } */
-// output: %%{ ... }
+// output: %%{ ... }%%
 
 const is_debug = false;
-const is_force = false; // overwrite output file
+//const is_debug = true;
+
+//const is_force = false; // overwrite output file
+const is_force = true; // overwrite output file
 
 const textStartLength = 50; // debug: print first n chars of nodeText
 
@@ -59,6 +62,49 @@ const parser = new TreeSitter();
 parser.setLanguage(TreeSitterC);
 const tree = parser.parse(sourceCode);
 
+function remove_comments(sourceCode) {
+
+  const tree = parser.parse(sourceCode);
+  var resultCode = new MagicString(sourceCode);
+
+  remove_comments_walker(tree.walk(), resultCode);
+
+  return resultCode.toString();
+}
+
+function remove_comments_walker(cursor, resultCode, level = 0) {
+  while (true) {
+
+    if (is_debug) {
+      // print this node
+      const textEscaped = cursor.nodeText.replace(/\n/g, '\\n');
+      const typeEscaped = cursor.nodeType.replace('\n', '\\n');
+      const textStart = (textEscaped.length < textStartLength)
+        ? textEscaped : (textEscaped.slice(0, textStartLength) + ' ...');
+      const textLocation = `${cursor.startIndex} ${cursor.endIndex}`; // offset in utf8 chars (or offset in bytes? which is it?)
+      //const textLocation = `${cursor.startPosition.row}:${cursor.startPosition.column} ${cursor.endPosition.row}:${cursor.endPosition.column}`;
+      const levelString = Array.from({ length: (level + 1) }).map(_ => '+').join('');
+      console.log(`${levelString} ${textLocation} ${typeEscaped}: ${textStart}`);
+    }
+
+    // handle this node
+    if (cursor.nodeType == 'comment') {
+      if (is_debug) {
+        console.log(`remove comment: ` + cursor.nodeText.replace(/\n/g, '\\n'));
+        console.log(`remove comment from ${cursor.startIndex} to ${cursor.endIndex}`);
+      }
+      resultCode.overwrite(cursor.startIndex, cursor.endIndex, '');
+    }
+
+    // go to next node
+    if (cursor.gotoFirstChild()) {
+      remove_comments_walker(cursor, resultCode, level + 1);
+      cursor.gotoParent();
+    }
+    if (!cursor.gotoNextSibling()) break;
+  }
+}
+
 const walk_cursor = (cursor, level = 0) => {
   while (true) {
 
@@ -79,12 +125,22 @@ const walk_cursor = (cursor, level = 0) => {
     let doneReplace = false;
     if (
       cursor.nodeType == 'comment'
-      && (ragelMatch = cursor.nodeText.match(/^(\/\*\s*%ragel\s*)({.*})(\s*\*\/)/s)) != null
+      && (ragelMatch = cursor.nodeText.match(/^(\/\*\s*%ragel\s*{)(.*)(}\s*\*\/)/s)) != null
     ) {
-      resultCode.overwrite(cursor.startIndex, cursor.endIndex, `%%${ragelMatch[2]}`);
+      resultCode.overwrite(cursor.startIndex, cursor.endIndex, `%%{${ragelMatch[2]}}%%`);
       doneReplace = true;
     }
     else if (
+      // #ifdef RAGEL
+      //   machine some_machine;
+      //   access some_state->;
+      //   // comment line
+      //   action some_action {
+      //     ...
+      //   }
+      //   /* comment block */
+      //   write data;
+      // #endif
       cursor.nodeType == 'preproc_ifdef'
       && cursor.currentNode.child(1).type == 'identifier'
       && cursor.currentNode.child(1).text == 'RAGEL'
@@ -97,7 +153,9 @@ const walk_cursor = (cursor, level = 0) => {
         console.log(cursor.nodeText);
         process.exit(1);
       }
-      const ragelBlock = sourceCode.slice(ifdefNode.child(1).endIndex, endifNode.startIndex);
+
+      const ragelBlock = remove_comments(sourceCode.slice(ifdefNode.child(1).endIndex, endifNode.startIndex));
+
       if (is_debug) {
         console.log(`found ifdef node @ ${ifdefNode.startIndex}`);
         console.log(`found endif node @ ${endifNode.startIndex}`);
@@ -105,7 +163,9 @@ const walk_cursor = (cursor, level = 0) => {
         console.log(`ragelBlock ${ifdefNode.child(1).endIndex} to ${endifNode.startIndex}`);
         console.dir({ ragelBlock });
       }
-      resultCode.overwrite(ifdefNode.startIndex, endifNode.endIndex, `%%{${ragelBlock}}`);
+
+      resultCode.overwrite(ifdefNode.startIndex, endifNode.endIndex, `%%{${ragelBlock}}%%`);
+
       doneReplace = true;
     }
 

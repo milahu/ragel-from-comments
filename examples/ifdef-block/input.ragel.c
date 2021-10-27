@@ -1,5 +1,11 @@
 #ifdef RAGEL
 
-ragel block
+  ragel command;
+
+  // comment line
+
+  /*
+    comment block
+  */
 
 #endif

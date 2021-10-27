@@ -1,5 +1,9 @@
 %%{
 
-ragel block
+  ragel command;
 
-}
+  
+
+  
+
+}%%
