@@ -16,6 +16,7 @@ license: CC0-1.0
 // output: %%{ ... }
 
 const is_debug = false;
+const is_force = false; // overwrite output file
 
 const textStartLength = 50; // debug: print first n chars of nodeText
 
@@ -43,7 +44,7 @@ if (!(inputPath.endsWith('.ragel.c') || inputPath.endsWith('.rl.c'))) {
 }
 const basePath = inputPath.split('.').slice(0, -2).join('.');
 const outputPath = basePath + '.c.ragel';
-if (fs.existsSync(outputPath)) {
+if (is_force == false && fs.existsSync(outputPath)) {
   console.log(`output exists: ${outputPath}`)
   process.exit(1);
 }
@@ -72,20 +73,43 @@ const walk_cursor = (cursor, level = 0) => {
     }
 
     // handle this node
-    var ragelMatch = null;
+    let ragelMatch = null;
+    let doneReplace = false;
     if (
       cursor.nodeType == 'comment'
       && (ragelMatch = cursor.nodeText.match(/^(\/\*\s*%ragel\s*)({.*})(\s*\*\/)/s)) != null
     ) {
-      resultCode.overwrite(
-        cursor.startIndex,
-        cursor.endIndex,
-        `%%${ragelMatch[2]}`
-      )
+      resultCode.overwrite(cursor.startIndex, cursor.endIndex, `%%${ragelMatch[2]}`);
+      doneReplace = true;
+    }
+    else if (
+      cursor.nodeType == 'preproc_ifdef'
+      && cursor.currentNode.child(1).type == 'identifier'
+      && cursor.currentNode.child(1).text == 'RAGEL'
+    ) {
+      const ifdefNode = cursor.currentNode;
+      let endifNode = ifdefNode.child(2).nextSibling;
+      while (endifNode != null && endifNode.type != '#endif') endifNode = endifNode.nextSibling;
+      if (endifNode == null) {
+        console.log('error: not found endifNode in ifdef block:')
+        console.log(cursor.nodeText);
+        process.exit(1);
+      }
+      const ragelBlock = sourceCode.slice(ifdefNode.child(1).endIndex, endifNode.startIndex);
+      if (is_debug) {
+        console.log(`found ifdef node @ ${ifdefNode.startIndex}`);
+        console.log(`found endif node @ ${endifNode.startIndex}`);
+        console.log(`replace ${ifdefNode.startIndex} to ${endifNode.endIndex}`);
+        console.log(`ragelBlock ${ifdefNode.child(1).endIndex} to ${endifNode.startIndex}`);
+        console.dir({ ragelBlock });
+      }
+      resultCode.overwrite(ifdefNode.startIndex, endifNode.endIndex, `%%{${ragelBlock}}`);
+      doneReplace = true;
     }
 
     // go to next node
-    if (cursor.gotoFirstChild()) {
+    // if node was replaced, ignore child nodes
+    if (doneReplace == false && cursor.gotoFirstChild()) {
       walk_cursor(cursor, level + 1);
       cursor.gotoParent();
     }
