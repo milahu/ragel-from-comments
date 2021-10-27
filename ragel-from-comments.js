@@ -37,13 +37,15 @@ if (!fs.existsSync(inputPath)) {
   console.log(`no such file: ${inputPath}`)
   process.exit(1);
 }
-if (!(inputPath.endsWith('.ragel.c') || inputPath.endsWith('.rl.c'))) {
+const inputPathRegex = /\.(ragel|rl)\.(c|cpp|c\+\+)$/;
+const inputPathMatch = inputPath.match(inputPathRegex);
+if (inputPathMatch == null) {
   console.log(`wrong file extension: ${inputPath}`)
-  console.log(`expected .ragel.c or .rl.c`)
+  console.log(`expected pattern: ${inputPathRegex.source}`)
   process.exit(1);
 }
 const basePath = inputPath.split('.').slice(0, -2).join('.');
-const outputPath = basePath + '.c.ragel';
+const outputPath = basePath + `.${inputPathMatch[2]}.${inputPathMatch[1]}`
 if (is_force == false && fs.existsSync(outputPath)) {
   console.log(`output exists: ${outputPath}`)
   process.exit(1);
