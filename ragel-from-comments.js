@@ -15,8 +15,8 @@ license: CC0-1.0
 // input: /* %ragel { ... } */
 // output: %%{ ... }%%
 
-const is_debug = false;
-//const is_debug = true;
+//const is_debug = false;
+const is_debug = true;
 
 //const is_force = false; // overwrite output file
 const is_force = true; // overwrite output file
@@ -62,6 +62,8 @@ const parser = new TreeSitter();
 parser.setLanguage(TreeSitterC);
 const tree = parser.parse(sourceCode);
 
+
+
 function remove_comments(sourceCode) {
 
   const tree = parser.parse(sourceCode);
@@ -71,6 +73,8 @@ function remove_comments(sourceCode) {
 
   return resultCode.toString();
 }
+
+
 
 function remove_comments_walker(cursor, resultCode, level = 0) {
   while (true) {
@@ -105,7 +109,9 @@ function remove_comments_walker(cursor, resultCode, level = 0) {
   }
 }
 
-const walk_cursor = (cursor, level = 0) => {
+
+
+function walk_cursor(cursor, level = 0) {
   while (true) {
 
     if (is_debug) {
@@ -168,6 +174,58 @@ const walk_cursor = (cursor, level = 0) => {
 
       doneReplace = true;
     }
+    else if (
+      cursor.nodeType == 'linkage_specification'
+      && cursor.currentNode.child(0).type == 'extern'
+      && cursor.currentNode.child(1).type == 'string_literal'
+      && cursor.currentNode.child(1).text == '"ragel"' // including doublequotes
+      //&& (ragelMatch = cursor.nodeText.match(/^(\/\*\s*%ragel\s*{)(.*)(}\s*\*\/)/s)) != null
+    ) {
+      const outerNode = cursor.currentNode;
+      const blockNode = cursor.currentNode.child(2);
+      const ragelBlock = remove_comments(
+        blockNode.text.slice(1, -1) // remove { and }
+      );
+      if (is_debug) {
+        console.dir({ ragelBlock });
+      }
+      resultCode.overwrite(outerNode.startIndex, outerNode.endIndex, `%%{${ragelBlock}}%%`);
+      doneReplace = true;
+    }
+    else if (
+      cursor.nodeType == 'call_expression'
+      && cursor.currentNode.child(0).type == 'identifier'
+      && cursor.currentNode.child(0).text == 'RAGEL'
+      && cursor.currentNode.child(1).type == 'argument_list'
+    ) {
+      const ragelBlock = remove_comments(
+        cursor.currentNode.child(1).text.slice(1, -1) // remove ( and )
+      );
+      if (is_debug) {
+        console.dir({ ragelBlock });
+      }
+      resultCode.overwrite(cursor.startIndex, cursor.endIndex, `%%{${ragelBlock}}%%`);
+      doneReplace = true;
+    }
+    else if (
+      cursor.nodeType == 'ERROR'
+      && cursor.currentNode.child(0).type == 'identifier'
+      && cursor.currentNode.child(0).text == 'RAGEL'
+      && cursor.currentNode.child(1).type == '('
+      && cursor.currentNode.nextSibling.type == 'compound_statement'
+    ) {
+      const ragelBlock = remove_comments(
+        cursor.currentNode.nextSibling.text.slice(1, -1) // remove { and }
+      );
+      if (is_debug) {
+        console.dir({ ragelBlock });
+      }
+      resultCode.overwrite(cursor.startIndex, cursor.currentNode.nextSibling.nextSibling.endIndex, `%%{${ragelBlock}}%%`);
+      cursor.gotoNextSibling(); // compound_statement
+      cursor.gotoNextSibling(); // ERROR
+      doneReplace = true;
+    }
+    // else if extern
 
     // go to next node
     // if node was replaced, ignore child nodes
@@ -178,6 +236,8 @@ const walk_cursor = (cursor, level = 0) => {
     if (!cursor.gotoNextSibling()) break;
   }
 }
+
+
 
 const cursor = tree.walk();
 walk_cursor(cursor);

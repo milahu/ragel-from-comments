@@ -1,0 +1,18 @@
+%%{
+
+  
+  machine some_machine;
+
+  
+
+}%%
+
+// "write error;" evaluates to "some_machine_error"
+if (state->rc == %%{write error;}%%) {
+  printf("error\n");
+}
+
+// "write first_final;" evaluates to "some_machine_first_final"
+if (state->rc == %%{write first_final;}%%) {
+  printf("first final\n");
+}
